@@ -1,45 +1,68 @@
 import os
-
 import numpy as np
 from tsp import TSP
 
 
 class TSPLoader:
-    def __init__(self, dir_name) -> None:
+    def __init__(self, dir_name: str) -> None:
         self.dir_name = dir_name
-        self.files = []
+        self.file_paths = []
+        self.idx = 0
+
+    def length(self) -> int:
+        return len(self.file_paths)
+
+    def load(self):
+        self.file_paths = [
+            os.path.join(self.dir_name, path)
+            for path in sorted(os.listdir(self.dir_name))
+            if path.endswith(".tsp")
+        ]
         self.idx = 0
 
     def parse(self) -> TSP:
-        file = self.files[self.idx]
-        line_idx = 0
-        data = []
-
-        ret: TSP = TSP()
-        for line in file:
-            if line_idx > 6 and line.find("EOF") == -1:
-                s = line.split()
-                data.append((float(s[1]), float(s[2])))
-
-            s = line.split(":")
-            key = s[0].strip()
-
-            if key.find("NAME") != -1:
-                ret.name = s[-1].strip()
-            elif key.find("COMMENT") != -1:
-                ret.comment = s[-1].strip()
-            elif key.find("DIMENSION") != -1:
-                ret.dimension = s[-1].strip()
-            elif key.find("EDGE_WEIGHT_TYPE") != -1:
-                ret.edge_weight_type = s[-1].strip()
-            elif key.find("TYPE") != -1:
-                ret.type = s[-1].strip()
-            line_idx += 1
-
+        file_path = self.file_paths[self.idx]
         self.idx += 1
-        ret.datapoints = np.array(data)
+
+        ret = TSP()
+        data = []
+        in_coord_section = False
+
+        with open(file_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                if line.startswith("EOF"):
+                    break
+
+                if in_coord_section:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        data.append((float(parts[1]), float(parts[2])))
+                    continue
+
+                if line.startswith("NODE_COORD_SECTION"):
+                    in_coord_section = True
+                    continue
+
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    key = key.strip().upper()
+                    val = val.strip()
+
+                    if key == "NAME":
+                        ret.name = val
+                    elif key == "COMMENT":
+                        ret.comment = val
+                    elif key == "DIMENSION":
+                        ret.dimension = int(val)
+                    elif key == "EDGE_WEIGHT_TYPE":
+                        ret.edge_weight_type = val
+                    elif key == "TYPE":
+                        ret.type = val
+
+        ret.datapoints = np.array(data, dtype=float)
         return ret
 
-    def load(self):
-        paths = os.listdir(self.dir_name)
-        self.files = [open(self.dir_name + "/" + path, "r") for path in paths]
