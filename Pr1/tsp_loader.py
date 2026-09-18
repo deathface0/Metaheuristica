@@ -1,13 +1,23 @@
 import os
 import numpy as np
 from tsp import TSP
-
+import json
 
 class TSPLoader:
-    def __init__(self, dir_name: str) -> None:
-        self.dir_name = dir_name
+    def __init__(self, preset_path: str) -> None:
+        with open(preset_path, "r", encoding="utf-8") as f:
+            preset = json.load(f)
+
+            self.dir_name = preset["files"]
+            self.seeds = preset["seeds"]
+            self.algorithms = preset["algs"]
+            self.params = preset["params"]
+        
         self.file_paths = []
         self.idx = 0
+
+    def get_preset():
+        return {}
 
     def length(self) -> int:
         return len(self.file_paths)
@@ -24,7 +34,7 @@ class TSPLoader:
         file_path = self.file_paths[self.idx]
         self.idx += 1
 
-        ret = TSP()
+        ret = TSP(self.seeds, self.algorithms, self.params)
         data = []
         in_coord_section = False
 

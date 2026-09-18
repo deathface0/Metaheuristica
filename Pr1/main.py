@@ -1,25 +1,18 @@
-import json
-import os
 from tsp_loader import TSPLoader
+from tsp_solver import TSPSolver
 
 if __name__ == "__main__":
-    with open("preset.json", "r", encoding="utf-8") as f:
-        parametros = json.load(f)
-
-    print("Parámetros cargados:", parametros)
-
-    archivos_path = parametros["archivos"]
-    if isinstance(archivos_path, list):
-        archivos_path = archivos_path[0]
-
-    loader = TSPLoader(archivos_path)
+    loader = TSPLoader("preset.json")
     loader.load()
 
     for i in range(loader.length()):
         p = loader.parse()
-        print(f"\nCargado: {p.name} (ciudades: {p.dimension})")
-
+        print(f"\n{'='*75}")
+        print(f"[INFO] Instancia: {p.name} | Nodos: {p.dimension} | Tipo: {p.edge_weight_type}")
+        print(f"{'='*75}")
         p.calc_dist()
-        print(f"  Matriz de distancias calculada: {p.dist.shape}")
+
+        solver = TSPSolver(p)
+        solver.run()
 
     
