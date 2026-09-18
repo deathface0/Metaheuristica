@@ -1,7 +1,11 @@
 import numpy as np
 
 class TSP():
-    def __init__(self) -> None:
+    def __init__(self, seeds, algs, params) -> None:
+        self.seeds = seeds
+        self.algorithms = algs
+        self.params = params
+
         self.name = ""
         self.comment = ""
         self.type = ""

@@ -1,14 +1,17 @@
 {
-  "archivos": "./problems",
-  "seed": [
+  "files": "./problems",
+  "seeds": [
     77387621,
     17738762,
     21773876
   ],
-  "alg": [
+  "algs": [
     "gre",
     "gra",
     "bl",
     "tabu"
-  ]
+  ],
+  "params": {
+    "k": 5
+  }
 }
