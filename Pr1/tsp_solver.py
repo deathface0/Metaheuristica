@@ -30,7 +30,7 @@ class TSPSolver:
         total_cost += self.data.dist[current_node][start_node]
         tour.append(start_node)
 
-        return tour, total_cost
+        return tour, int(total_cost)
 
     def run(self):
         for alg in self.data.algorithms:
