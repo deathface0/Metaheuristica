@@ -5,31 +5,34 @@ class TSPSolver:
     def __init__(self, tsp_data):
         self.data = tsp_data
 
-    def tsp_greedy(self, start_node = 0):
-        num_nodes = len(self.data.dist)
+    def tsp_greedy(self):
+        n = len(self.data.dist)
+
+        # Buscamos la ciudad mas centrica
+        start_node = int(np.argmin(self.data.dist.sum(axis=1)))
         
-        visited = np.zeros(num_nodes, dtype=bool)
-        tour = [start_node]
+        tour = np.empty(n, dtype=np.int32)
+        tour[0] = start_node
+        
+        visited = np.zeros(n, dtype=bool)
         visited[start_node] = True
-        total_cost = 0
         current_node = start_node
 
-        for _ in range(num_nodes - 1):
+        # Buscamos el vecino mas cercano
+        for i in range(1, n):
             distances = self.data.dist[current_node].astype(float)
             distances[visited] = np.inf
+            next_node = int(np.argmin(distances))
             
-            next_node = np.argmin(distances)
-            min_distance = distances[next_node]
-
-            tour.append(int(next_node))
+            tour[i] = next_node
             visited[next_node] = True
-            total_cost += min_distance
             current_node = next_node
-
-        total_cost += self.data.dist[current_node][start_node]
-        tour.append(start_node)
-
-        return tour, int(total_cost)
+            
+        path_cost = np.sum(self.data.dist[tour[:-1], tour[1:]])
+        return_cost = self.data.dist[tour[-1], tour[0]]
+        total_cost = int(path_cost + return_cost)
+        
+        return tour.tolist(), total_cost
 
     def run(self):
         for alg in self.data.algorithms:
