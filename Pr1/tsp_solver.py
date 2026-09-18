@@ -34,6 +34,26 @@ class TSPSolver:
         
         return tour.tolist(), total_cost
 
+    def tsp_random_greedy(self, seed: int):
+        np.random.seed(seed)
+
+        n = len(self.data.dist)
+        k = self.data.params["k"]
+        
+        ordered_nodes = np.argsort(self.data.dist.sum(axis=1)).tolist()
+        tour = np.empty(n, dtype=np.int32)
+
+        for i in range(n):
+            k = min(k, len(ordered_nodes))
+            rand_idx = np.random.randint(0, k)
+            tour[i] = ordered_nodes.pop(rand_idx)
+
+        path_cost = np.sum(self.data.dist[tour[:-1], tour[1:]])
+        return_cost = self.data.dist[tour[-1], tour[0]]
+        total_cost = int(path_cost + return_cost)
+
+        return tour.tolist(), total_cost 
+
     def run(self):
         for alg in self.data.algorithms:
             costs = []
@@ -46,7 +66,7 @@ class TSPSolver:
                 if alg == "gre":
                     res = self.tsp_greedy()
                 elif alg == "gra":
-                    pass
+                    res = self.tsp_random_greedy(seed)
                 elif alg == "bl":
                     pass
                 elif alg == "tabu":
