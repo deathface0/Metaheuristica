@@ -32,7 +32,3 @@ class TSP():
             self.dist[i:i + chunk_size] = np.round(d)
 
         return self.dist
-
-        
-
-    

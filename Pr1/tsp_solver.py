@@ -1,3 +1,4 @@
+import time
 import numpy as np
 
 class TSPSolver:
@@ -34,11 +35,15 @@ class TSPSolver:
 
     def run(self):
         for alg in self.data.algorithms:
+            costs = []
+            times = []
+
             for seed in self.data.seeds:
-                print(f"Corriendo algoritmo '{alg}' con seed '{seed}'")
+                t0 = time.perf_counter()
+                res = None
+
                 if alg == "gre":
                     res = self.tsp_greedy(seed=seed)
-                    print(f" -> Coste obtenido: {res[1]}")
                 elif alg == "gra":
                     pass
                 elif alg == "bl":
@@ -47,3 +52,17 @@ class TSPSolver:
                     pass
                 else:
                     pass
+
+                t1 = time.perf_counter()
+                elapsed = t1 - t0
+
+                if res is not None:
+                    tour, cost = res
+                    costs.append(cost)
+                    times.append(elapsed)
+                    print(f"[INFO] Algoritmo: {alg} | Seed: {seed} | Coste: {cost} | Tiempo: {elapsed:.4f}s")
+
+            if costs:
+                print(f"[INFO] Resumen {alg} | Min: {min(costs)} | Media: {np.mean(costs):<10.2f} | Desv: {np.std(costs):<8.2f} | Tiempo medio: {np.mean(times):.4f}s")
+            else:
+                print(f"[WARN] Algoritmo '{alg}' no implementado.")
