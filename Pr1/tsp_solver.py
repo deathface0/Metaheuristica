@@ -5,10 +5,8 @@ class TSPSolver:
     def __init__(self, tsp_data):
         self.data = tsp_data
 
-    def tsp_greedy(self, seed=0):
-        np.random.seed(seed)
+    def tsp_greedy(self, start_node = 0):
         num_nodes = len(self.data.dist)
-        start_node = np.random.randint(num_nodes)
         
         visited = np.zeros(num_nodes, dtype=bool)
         tour = [start_node]
@@ -43,7 +41,7 @@ class TSPSolver:
                 res = None
 
                 if alg == "gre":
-                    res = self.tsp_greedy(seed=seed)
+                    res = self.tsp_greedy()
                 elif alg == "gra":
                     pass
                 elif alg == "bl":
