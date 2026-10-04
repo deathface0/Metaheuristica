@@ -54,6 +54,56 @@ class TSPSolver:
 
         return tour.tolist(), total_cost 
 
+    def _deltas_intercambio(self, s, i):
+        d = self.data.dist
+        n = len(s)
+        ant, sig = np.roll(s, 1), np.roll(s, -1)
+        a = s[i]
+
+        desaparecen = d[ant[i], a] + d[a, sig[i]] + d[ant, s] + d[s, sig]
+        nuevos = d[ant[i], s] + d[sig[i], s] + d[a, ant] + d[a, sig]
+        delta = nuevos - desaparecen
+
+        # Ciudades contiguas: el arco entre ellas se ha restado dos veces
+        contiguas = [(i - 1) % n, (i + 1) % n]
+        delta[contiguas] += 2 * d[a, s[contiguas]]
+        delta[i] = 0
+
+        return delta
+
+    def busqueda_local(self, seed: int, max_iter: int = None):
+        if max_iter is None:
+            max_iter = self.data.params.get("bl_iter", 10000)
+
+        # Solucion inicial
+        tour, coste = self.tsp_random_greedy(seed)
+        s = np.array(tour)
+        n = len(s)
+
+        dlb = np.zeros(n, dtype=bool)
+        i = np.random.randint(n)
+        it = 0
+
+        # Sin ciudades prometedoras ningun vecino mejora: fin de la busqueda
+        while it < max_iter and not dlb.all():
+            if not dlb[i]:
+                delta = self._deltas_intercambio(s, i)
+                orden = (i + 1 + np.arange(n - 1)) % n  # j circular desde i+1
+                mejoras = orden[delta[orden] < 0]
+
+                if mejoras.size:
+                    j = mejoras[0]  # Primer mejor
+                    s[[i, j]] = s[[j, i]]
+                    coste += delta[j]
+                    dlb[[i, j]] = False
+                    it += 1
+                else:
+                    dlb[i] = True
+
+            i = (i + 1) % n
+
+        return s.tolist(), int(coste)
+
     def run(self):
         for alg in self.data.algorithms:
             costs = []
@@ -68,7 +118,7 @@ class TSPSolver:
                 elif alg == "gra":
                     res = self.tsp_random_greedy(seed)
                 elif alg == "bl":
-                    pass
+                    res = self.busqueda_local(seed)
                 elif alg == "tabu":
                     pass
                 else:
