@@ -20,7 +20,7 @@ class TSP():
             self.dist = np.empty((0, 0), dtype=int)
             return self.dist
 
-        self.dist = np.empty((n, n), dtype=int)
+        self.dist = np.empty((n, n), dtype=np.int32)
 
         x = self.datapoints[:, 0]
         y = self.datapoints[:, 1]

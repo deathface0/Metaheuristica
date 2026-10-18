@@ -1,7 +1,11 @@
 import json
+import os
 import time
+from collections import deque
 
 import numpy as np
+
+INT32_MAX = np.iinfo(np.int32).max
 
 
 class TSPSolver:
@@ -15,6 +19,7 @@ class TSPSolver:
             "total_iter": iter,
             "total_cost": cost,
         }
+        os.makedirs("./logs", exist_ok=True)
         filename = f"./logs/{self.data.name}_{curr_alg}.json.log"
         if seed:
             filename = f"./logs/{self.data.name}_{curr_alg}_{seed}.json.log"
@@ -61,8 +66,8 @@ class TSPSolver:
         tour = np.empty(n, dtype=np.int32)
 
         for i in range(n):
-            k = min(k, len(ordered_nodes))
-            rand_idx = np.random.randint(0, k)
+            kk = min(k, len(ordered_nodes))
+            rand_idx = np.random.randint(0, kk)
             tour[i] = ordered_nodes.pop(rand_idx)
 
         path_cost = np.sum(self.data.dist[tour[:-1], tour[1:]])
@@ -113,57 +118,102 @@ class TSPSolver:
                 if mejoras.size:
                     j = mejoras[0]  # Primer mejor
                     s[[i, j]] = s[[j, i]]
-                    coste += delta[j]
+                    coste += int(delta[j])
                     dlb[[i, j]] = False
                     it += 1
                 else:
                     dlb[i] = True
-            self.log_to_file(
-                "bl",
-                coste,
-                {"start": start, "bl_iter": max_iter, "seed": seed},
-                int(it),
-                seed,
-            )
             i = (i + 1) % n
 
+        self.log_to_file(
+            "bl",
+            coste,
+            {"start": start, "bl_iter": max_iter, "seed": seed},
+            int(it),
+            seed,
+        )
         return s.tolist(), int(coste)
 
-    def _tabu_oscilacion(self, memoria, rng, intensificar):
-        """Construye una solución usando las frecuencias de la MLP."""
+    def _deltas_filas(self, s, ant, sig, arcos, P):
+        """Deltas de intercambiar cada posición de P con todas las posiciones."""
+        d = self.data.dist
+        n = len(s)
+        a = s[P]
+
+        filas_a = d[a]
+        nuevos = (
+            np.take(d[ant[P]], s, axis=1)
+            + np.take(d[sig[P]], s, axis=1)
+            + np.take(filas_a, ant, axis=1)
+            + np.take(filas_a, sig, axis=1)
+        )
+        delta = nuevos - arcos[P, np.newaxis] - arcos
+
+        # Ciudades contiguas: el arco entre ellas se ha restado dos veces
+        r = np.arange(len(P))
+        delta[r, (P + 1) % n] += 2 * d[a, sig[P]]
+        delta[r, (P - 1) % n] += 2 * d[a, ant[P]]
+
+        # Intercambiar una posición consigo misma no es un movimiento
+        delta[r, P] = INT32_MAX
+
+        return delta
+
+    def _construir_deltas(self, s, delta):
+        """Rellena delta con todos los intercambios de s, por bloques de filas.
+
+        Devuelve las ciudades anterior y siguiente de cada posición, el coste
+        de sus dos arcos y el mínimo (con su columna) de cada fila.
+        """
+        d = self.data.dist
+        n = len(s)
+
+        ant, sig = np.roll(s, 1), np.roll(s, -1)
+        arcos = d[ant, s] + d[s, sig]
+
+        fila_min = np.empty(n, dtype=np.int32)
+        fila_arg = np.empty(n, dtype=np.intp)
+
+        bloque = max(1, 2**20 // n)
+        for p0 in range(0, n, bloque):
+            p1 = min(p0 + bloque, n)
+            filas = self._deltas_filas(s, ant, sig, arcos, np.arange(p0, p1))
+            delta[p0:p1] = filas
+            fila_arg[p0:p1] = filas.argmin(axis=1)
+            fila_min[p0:p1] = filas[np.arange(p1 - p0), fila_arg[p0:p1]]
+
+        return ant, sig, arcos, fila_min, fila_arg
+
+    def _tabu_oscilacion(self, mlp, rng, intensificar, escala):
+        """Construye una solución greedy guiada por las frecuencias de la MLP.
+
+        Intensificar sigue el arco más frecuente y diversificar el menos
+        frecuente. Los empates se deshacen por distancia: escala es mayor que
+        cualquier distancia, así que frecuencia y distancia van en un entero.
+        """
         d = self.data.dist
         n = len(d)
 
         solucion = np.empty(n, dtype=np.intp)
-        visitadas = np.zeros(n, dtype=bool)
-
         actual = int(rng.integers(n))
         solucion[0] = actual
-        visitadas[actual] = True
+
+        # Las ciudades no visitadas están en restantes[:n - posicion]
+        restantes = np.delete(np.arange(n), actual)
 
         for posicion in range(1, n):
-            candidatas = np.flatnonzero(~visitadas)
-
-            # TSP simétrico: los arcos se almacenan en el triángulo inferior.
-            frecuencias = memoria["mlp"][
-                np.maximum(actual, candidatas),
-                np.minimum(actual, candidatas),
-            ]
+            m = n - posicion
+            candidatas = restantes[:m]
+            puntuacion = mlp[actual, candidatas].astype(np.int64) * escala
 
             if intensificar:
-                objetivo = frecuencias.max()
+                k = np.argmax(puntuacion - d[actual, candidatas])
             else:
-                objetivo = frecuencias.min()
+                k = np.argmin(puntuacion + d[actual, candidatas])
 
-            candidatas = candidatas[frecuencias == objetivo]
-
-            # Desempate por distancia y, después, aleatoriamente.
-            distancias = d[actual, candidatas]
-            candidatas = candidatas[distancias == distancias.min()]
-
-            actual = int(rng.choice(candidatas))
+            actual = int(candidatas[k])
             solucion[posicion] = actual
-            visitadas[actual] = True
+            restantes[k] = restantes[m - 1]
 
         return solucion
 
@@ -187,209 +237,177 @@ class TSPSolver:
 
         if n == 0:
             raise ValueError("El problema debe contener al menos una ciudad")
-        if not np.array_equal(d, d.T):
-            raise ValueError("Esta implementación requiere un TSP simétrico")
 
         limite_estancamiento = max(1, int(np.ceil(max_iter * estancamiento)))
 
         rng = np.random.default_rng(seed)
 
         tour, coste_actual = self.tsp_random_greedy(seed)
-        solucion_actual = np.asarray(tour, dtype=np.intp)
+        s = np.asarray(tour, dtype=np.intp)
         coste_inicial = coste_actual
 
-        mejor_momento_actual = solucion_actual.copy()
+        mejor_global = s.copy()
+        coste_mejor_global = coste_actual
         coste_mejor_momento = coste_actual
 
-        mejor_global = solucion_actual.copy()
-        coste_mejor_global = coste_actual
+        it = 0
 
-        # Una única matriz cuadrada con celdas estructuradas:
-        #
-        # - MCP: triángulo superior, incluida la diagonal.
-        #   Dos orientaciones para distinguir (ciudad, posición)
-        #   de (posición, ciudad).
-        #
-        # - MLP: triángulo inferior, con frecuencias de arcos
-        #   no dirigidos. Para n == 1 se utiliza su diagonal.
-        memoria = np.zeros(
-            (n, n),
-            dtype=[
-                ("mcp", np.int64, (2,)),
-                ("mlp", np.int64),
-            ],
-        )
+        # Con n <= 3 todos los tours cuestan lo mismo
+        if n >= 4:
+            # delta[p, q]: variación del coste al intercambiar las posiciones p y q.
+            # fila_min[p] >= 0 indica que no hay mejora desde p (DLB exacto).
+            delta = np.empty((n, n), dtype=np.int32)
+            ant, sig, arcos, fila_min, fila_arg = self._construir_deltas(s, delta)
 
-        mcp = memoria["mcp"]
-        mlp = memoria["mlp"]
+            pos = np.empty(n, dtype=np.intp)
+            pos[s] = np.arange(n)
 
-        # Solo se recorren las entradas activas al decrementar la MCP.
-        activas = set()
+            # MCP: pares de ciudades intercambiadas en los últimos 'tenencia' movimientos
+            lista_tabu = deque(maxlen=tenencia)
 
-        def clave_mcp(ciudad, posicion):
-            return (
-                min(ciudad, posicion),
-                max(ciudad, posicion),
-                int(ciudad > posicion),
-            )
+            # MLP simétrica con la frecuencia de cada arco.
+            mlp = np.zeros((n, n), dtype=np.int32)
+            entrada = np.zeros(n, dtype=np.int64)
+            instantanea = 0
+            escala = None
 
-        def actualizar_mlp(solucion):
-            siguientes = np.roll(solucion, -1)
+            en_n = np.zeros(n, dtype=bool)
+            inicio = int(rng.integers(n))
+            sin_mejora = 0
 
-            filas = np.maximum(solucion, siguientes)
-            columnas = np.minimum(solucion, siguientes)
+            while it < max_iter:
+                # Posiciones vetadas para cada posición por la MCP
+                vetadas = {}
+                for c1, c2 in lista_tabu:
+                    p1, p2 = int(pos[c1]), int(pos[c2])
+                    vetadas.setdefault(p1, []).append(p2)
+                    vetadas.setdefault(p2, []).append(p1)
 
-            # arco de vuelta al inicio tmb
-            np.add.at(mlp, (filas, columnas), 1)
+                # Mínimo no tabú de cada fila: solo cambia si el mínimo es tabú
+                efectivo = fila_min
+                if vetadas:
+                    efectivo = fila_min.copy()
+                    for p, qs in vetadas.items():
+                        if fila_arg[p] in qs:
+                            fila = delta[p].copy()
+                            fila[qs] = INT32_MAX
+                            efectivo[p] = fila.min()
 
-        actualizar_mlp(solucion_actual)
-        sin_mejora = 0
+                filas = np.flatnonzero(efectivo < 0)
+                mejora = filas.size > 0
 
-        for it in range(max_iter):
-            mejor_delta = np.inf
-            movimiento = None
+                if not mejora:
+                    # Mejor de los peores
+                    objetivo = efectivo.min()
+                    filas = np.flatnonzero(efectivo == objetivo)
 
-            for i in range(n - 1):
-                # intercambiables con i (vecinos)
-                js = np.arange(i + 1, n)
+                if mejora or objetivo != INT32_MAX:
+                    # Primera fila en orden circular desde inicio y, en ella,
+                    # primera columna en orden circular desde i + 1
+                    i = int(filas[np.searchsorted(filas, inicio) % filas.size])
 
-                a = int(solucion_actual[i])
-                bs = solucion_actual[js]
+                    if mejora:
+                        cols = np.flatnonzero(delta[i] < 0)
+                    else:
+                        cols = np.flatnonzero(delta[i] == objetivo)
+                    if i in vetadas:
+                        cols = cols[~np.isin(cols, vetadas[i])]
 
-                # mascaras para ver si intercambiar las 2 ciudades incumple el tabu
-                tabu_a = (
-                    mcp[
-                        np.minimum(a, js),
-                        np.maximum(a, js),
-                        (a > js).astype(np.intp),
-                    ]
-                    > 0
-                )
+                    j = int(cols[np.searchsorted(cols, i + 1) % cols.size])
 
-                tabu_b = (
-                    mcp[
-                        np.minimum(bs, i),
-                        np.maximum(bs, i),
-                        (bs > i).astype(np.intp),
-                    ]
-                    > 0
-                )
+                    if mejora:
+                        inicio = i
 
-                # intercambios admisibles dentro del vecindario, ya filtrados por la memoria tabu
-                admisibles = js[~(tabu_a | tabu_b)]
+                    a, b = int(s[i]), int(s[j])
 
-                # duda
-                if not admisibles.size:
-                    continue
+                    # MLP: se acumulan las instantáneas de los arcos que desaparecen
+                    instantanea += 1
+                    e = np.unique(np.array([i - 1, i, j - 1, j]) % n)
+                    u, v = s[e], s[(e + 1) % n]
+                    w = instantanea - entrada[e]
+                    mlp[u, v] += w
+                    mlp[v, u] += w
+                    entrada[e] = instantanea
 
-                # delta del coste como en bl
-                deltas = self._deltas_intercambio(solucion_actual, i)
+                    coste_actual += int(delta[i, j])
+                    s[i], s[j] = b, a
+                    pos[a], pos[b] = j, i
 
-                # pillar negativo (mejora)
-                mejoras = admisibles[deltas[admisibles] < 0]
+                    # Solo cambian las filas y columnas de las posiciones con
+                    # algún arco nuevo
+                    N = np.unique(np.array([i - 1, i, i + 1, j - 1, j, j + 1]) % n)
+                    ant[N] = s[(N - 1) % n]
+                    sig[N] = s[(N + 1) % n]
+                    arcos[N] = d[ant[N], s[N]] + d[s[N], sig[N]]
 
-                if mejoras.size:
-                    j = int(mejoras[0])
-                    movimiento = (i, j)
-                    mejor_delta = int(deltas[j])
-                    break
+                    nuevas = self._deltas_filas(s, ant, sig, arcos, N)
+                    delta[N] = nuevas
+                    delta[:, N] = nuevas.T
 
-                # si no hay mejoras, delta mas pequeno
-                j = int(admisibles[np.argmin(deltas[admisibles])])
+                    # Mínimos por fila: si baja, el nuevo mínimo está en N; si
+                    # el antiguo mínimo estaba en N y no baja, se recalcula
+                    cand_arg = nuevas.argmin(axis=0)
+                    cand_min = nuevas[cand_arg, np.arange(n)]
+                    baja = cand_min < fila_min
+                    fila_min[baja] = cand_min[baja]
+                    fila_arg[baja] = N[cand_arg[baja]]
 
-                if deltas[j] < mejor_delta:
-                    movimiento = (i, j)
-                    mejor_delta = int(deltas[j])
+                    en_n[N] = True
+                    obsoletas = np.flatnonzero(en_n[fila_arg] & ~baja)
+                    en_n[N] = False
 
-            # A partir de aqui no se si esta bien, actualizar mcp, aplicar el moviemiento, actualizar mlp, actualizar solucion global, y mirar estancamiento
+                    obsoletas = np.union1d(obsoletas, N)
+                    fila_arg[obsoletas] = delta[obsoletas].argmin(axis=1)
+                    fila_min[obsoletas] = delta[obsoletas, fila_arg[obsoletas]]
 
-            # Actualización de MCP en CADA iteración.
-            #
-            # Se consulta antes de decrementar para que una entrada
-            # con tenencia t bloquee las t selecciones siguientes.
-            for clave in tuple(activas):
-                mcp[clave] -= 1
+                    lista_tabu.append((min(a, b), max(a, b)))
 
-                if mcp[clave] == 0:
-                    activas.remove(clave)
+                    if coste_actual < coste_mejor_global:
+                        mejor_global = s.copy()
+                        coste_mejor_global = coste_actual
 
-            if movimiento is not None:
-                i, j = movimiento
-                a = int(solucion_actual[i])
-                b = int(solucion_actual[j])
+                    if coste_actual < coste_mejor_momento:
+                        coste_mejor_momento = coste_actual
+                        sin_mejora = 0
+                    else:
+                        sin_mejora += 1
+                else:
+                    # Todos los movimientos son tabú: se cuenta la iteración
+                    # para no quedarse en un bucle infinito
+                    sin_mejora += 1
 
-                # Prohibir que las ciudades vuelvan a sus posiciones
-                # anteriores: dos asignaciones tabú por intercambio.
-                for ciudad, posicion in ((a, i), (b, j)):
-                    clave = clave_mcp(ciudad, posicion)
-                    mcp[clave] = tenencia
-                    activas.add(clave)
+                it += 1
 
-                solucion_actual[[i, j]] = solucion_actual[[j, i]]
-                coste_actual += mejor_delta
+                if sin_mejora >= limite_estancamiento and it < max_iter:
+                    sin_mejora = 0
+                    intensificar = bool(rng.random() < oscilacion)
 
-            # Si no hay vecino admisible, se conserva la solución:
-            # no se viola la MCP ni se aplica aspiración.
+                    # Volcado de la MLP antes de leerla
+                    w = instantanea + 1 - entrada
+                    mlp[s, sig] += w
+                    mlp[sig, s] += w
 
-            # Actualización de MLP en CADA iteración.
-            actualizar_mlp(solucion_actual)
+                    if escala is None:
+                        escala = int(d.max()) + 1
 
-            if coste_actual < coste_mejor_momento:
-                mejor_momento_actual = solucion_actual.copy()
-                coste_mejor_momento = coste_actual
-                sin_mejora = 0
-            else:
-                sin_mejora += 1
+                    s = self._tabu_oscilacion(mlp, rng, intensificar, escala)
+                    entrada.fill(instantanea + 1)
 
-            if coste_actual < coste_mejor_global:
-                mejor_global = solucion_actual.copy()
-                coste_mejor_global = coste_actual
+                    coste_actual = int(np.sum(d[s, np.roll(s, -1)], dtype=np.int64))
+                    coste_mejor_momento = coste_actual
 
-            if sin_mejora >= limite_estancamiento and it + 1 < max_iter:
-                # 50 % intensificación / 50 % diversificación.
-                intensificar = bool(rng.random() < oscilacion)
+                    if coste_actual < coste_mejor_global:
+                        mejor_global = s.copy()
+                        coste_mejor_global = coste_actual
 
-                solucion_actual = self._tabu_oscilacion(memoria, rng, intensificar)
-
-                coste_actual = int(
-                    np.sum(
-                        d[
-                            solucion_actual,
-                            np.roll(solucion_actual, -1),
-                        ]
+                    ant, sig, arcos, fila_min, fila_arg = self._construir_deltas(
+                        s, delta
                     )
-                )
+                    pos[s] = np.arange(n)
+                    lista_tabu.clear()
+                    inicio = int(rng.integers(n))
 
-                # Reiniciar el tramo, conservando MLP y mejor global.
-                mcp.fill(0)
-                activas.clear()
-                sin_mejora = 0
-
-                mejor_momento_actual = solucion_actual.copy()
-                coste_mejor_momento = coste_actual
-
-                # La nueva solución generada también ha sido visitada.
-                actualizar_mlp(solucion_actual)
-
-                if coste_actual < coste_mejor_global:
-                    mejor_global = solucion_actual.copy()
-                    coste_mejor_global = coste_actual
-
-                self.log_to_file(
-                    "tabu",
-                    coste_mejor_global,
-                    {
-                        "start": coste_inicial,
-                        "seed": seed,
-                        "tabu_iter": max_iter,
-                        "tabu_tenencia": tenencia,
-                        "tabu_estancamiento": estancamiento,
-                        "limite_estancamiento": limite_estancamiento,
-                        "tabu_oscilacion": oscilacion,
-                    },
-                    it,
-                    seed,
-                )
+                    it += 1
 
         self.log_to_file(
             "tabu",
@@ -403,7 +421,7 @@ class TSPSolver:
                 "limite_estancamiento": limite_estancamiento,
                 "tabu_oscilacion": oscilacion,
             },
-            max_iter,
+            it,
             seed,
         )
 
@@ -419,11 +437,11 @@ class TSPSolver:
                 res = None
 
                 if alg == "gre":
-                    pass
+                    res = self.tsp_greedy()
                 elif alg == "gra":
-                    pass
+                    res = self.tsp_random_greedy(seed)
                 elif alg == "bl":
-                    pass
+                    res = self.busqueda_local(seed)
                 elif alg == "tabu":
                     res = self.busqueda_tabu(seed)
                 else:

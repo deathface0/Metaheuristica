@@ -1,9 +1,0 @@
-{
-    "alg": "a280",
-    "params": {
-        "k": 1,
-        "seed": 77387621
-    },
-    "total_iter": 280,
-    "total_cost": 30054
-}
