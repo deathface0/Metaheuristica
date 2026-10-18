@@ -1,0 +1,14 @@
+{
+    "alg": "a280",
+    "params": {
+        "start": 28876,
+        "seed": 21773876,
+        "tabu_iter": 10000,
+        "tabu_tenencia": 10,
+        "tabu_estancamiento": 0.05,
+        "limite_estancamiento": 500,
+        "tabu_oscilacion": 0.5
+    },
+    "total_iter": 10000,
+    "total_cost": 3925
+}

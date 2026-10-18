@@ -13,6 +13,10 @@
   ],
   "params": {
     "k": 5,
-    "bl_iter": 10000
+    "bl_iter": 10000,
+    "tabu_iter": 10000,
+    "tabu_estancamiento": 0.05,
+    "tabu_tenencia": 10,
+    "tabu_oscilacion": 0.50
   }
 }

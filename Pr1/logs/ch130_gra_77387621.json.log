@@ -1,0 +1,9 @@
+{
+    "alg": "ch130",
+    "params": {
+        "k": 1,
+        "seed": 77387621
+    },
+    "total_iter": 130,
+    "total_cost": 43520
+}

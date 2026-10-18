@@ -1,0 +1,9 @@
+{
+    "alg": "u1060",
+    "params": {
+        "k": 1,
+        "seed": 17738762
+    },
+    "total_iter": 1060,
+    "total_cost": 5689477
+}
