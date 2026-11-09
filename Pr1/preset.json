@@ -1,22 +1,23 @@
 {
   "files": "./problems",
   "seeds": [
-    77387621,
-    17738762,
-    21773876
+    77387621
   ],
   "algs": [
-    "gre",
-    "gra",
-    "bl",
-    "tabu"
+    "gen"
   ],
   "params": {
-    "k": 5,
+    "k": 10,
     "bl_iter": 10000,
     "tabu_iter": 10000,
     "tabu_estancamiento": 0.05,
     "tabu_tenencia": 10,
-    "tabu_oscilacion": 0.50
+    "tabu_oscilacion": 0.50,
+    "gen_elite": 1,
+    "gen_k_best": 2,
+    "gen_k_worst": 2,
+    "gen_cruce": "ox2",
+    "gen_max_eval": 50000,
+    "gen_max_seconds": 120
   }
 }

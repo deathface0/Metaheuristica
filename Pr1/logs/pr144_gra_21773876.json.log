@@ -1,9 +1,0 @@
-{
-    "alg": "pr144",
-    "params": {
-        "k": 1,
-        "seed": 21773876
-    },
-    "total_iter": 144,
-    "total_cost": 663725
-}

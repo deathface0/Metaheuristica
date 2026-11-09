@@ -51,7 +51,7 @@ class TSPSolver:
         self.log_to_file("gre", total_cost, {}, n)
         return tour.tolist(), total_cost
 
-    def tsp_random_greedy(self, seed: int):
+    def tsp_random_greedy(self, seed: int, log=False):
         np.random.seed(seed)
 
         n = len(self.data.dist)
@@ -69,7 +69,8 @@ class TSPSolver:
         return_cost = self.data.dist[tour[-1], tour[0]]
         total_cost = int(path_cost + return_cost)
 
-        self.log_to_file("gra", total_cost, {"k": k, "seed": seed}, n, seed)
+        if log:
+            self.log_to_file("gra", total_cost, {"k": k, "seed": seed}, n, seed)
         return tour.tolist(), total_cost
 
     def _deltas_intercambio(self, s, i):
@@ -425,7 +426,7 @@ class TSPSolver:
                 elif alg == "bl":
                     pass
                 elif alg == "tabu":
-                    res = self.busqueda_tabu(seed)
+                    pass
                 else:
                     pass
 
